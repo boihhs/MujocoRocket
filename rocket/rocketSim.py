@@ -5,7 +5,7 @@ import os
 from lqr import LQR
 
 xml_path = 'rocket.xml' #xml file (assumes this is in the same folder as this file)
-simend = 5 #simulation time
+simend = 20 #simulation time
 print_camera_config = 0 #set to 1 to print camera config
                         #this is useful for initializing view of the model)
 
@@ -23,16 +23,7 @@ def init_controller(model,data):
     data.ctrl = thrust_vector
 
 def controller(model, data):
-    cam.lookat = data.qpos[:3]
-    #mj.mjd_transitionFD(model, data, epsilon, flg_centered, A, B, None, None)
-    #lqr = LQR(A, B, Q, Qfinal, R, 1./60., simend-data.time)
-    #K = lqr.fhlqr()
-    #mj.mj_differentiatePos(model, dq, 1, qpos0, data.qpos)
-    dx = np.hstack((dq, data.qvel)).T
-    data.ctrl = ctrl0 - K[1] @ dx
-    data.ctrl = np.clip(data.ctrl, min, max)
-    #print(data.ctrl)
-    #step += 1
+    pass
 
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
@@ -138,17 +129,17 @@ glfw.set_scroll_callback(window, scroll)
 # cam.elevation = -45
 # cam.distance = 2
 # cam.lookat = np.array([0.0, 0.0, 0])
-cam.azimuth = 90.0 ; cam.elevation = -29.0 ; cam.distance =  30
+cam.azimuth = 90.0 ; cam.elevation = -29.0 ; cam.distance =  10
 cam.lookat =np.array([ 0.0 , 0.0 , 0.0 ])
 mj.mj_resetData(model, data)
 
-max = 1000
-min = -1000
+max = 500
+min = -500
 
 #set up LQR
-qpos0 = np.array([0, 0, 5, 1, 0, 0, 0])
+qpos0 = np.array([0, 0, 0, 1, 0, 0, 0])
 data.qpos = qpos0
-ctrl0 = np.array([0, 0, 0])
+ctrl0 = np.array([0, 0, sum(model.body_mass)*9.806])
 data.ctrl = ctrl0
 dq = np.zeros(model.nv)
 
@@ -161,10 +152,11 @@ flg_centered = True
 mj.mjd_transitionFD(model, data, epsilon, flg_centered, A, B, None, None)
 
 R = np.eye(nu)*.1
-Q = np.eye(nv*2)*100
-Qfinal = np.eye(nv*2)
+Q = np.eye(nv*2) * 100
+Qfinal = np.eye(nv*2) * 200
 lqr = LQR(A, B, Q, Qfinal, R, 1./60., simend)
 K = lqr.fhlqr()
+
 
 #initialize the controller
 mj.mj_resetData(model, data)
@@ -178,11 +170,19 @@ while not glfw.window_should_close(window):
 
     while (data.time - time_prev < 1.0/60.0):
         mj.mj_step(model, data)
+    
+    cam.lookat = data.qpos[:3]
     mj.mjd_transitionFD(model, data, epsilon, flg_centered, A, B, None, None)
     lqr = LQR(A, B, Q, Qfinal, R, 1./60., simend-data.time)
     K = lqr.fhlqr()
-    print(data.ctrl)
+    mj.mj_differentiatePos(model, dq, 1, qpos0, data.qpos)
+    dx = np.hstack((dq, data.qvel)).T
+    data.ctrl = ctrl0 - K[0] @ dx
     
+    data.ctrl = np.clip(data.ctrl, min, max)
+    #data.ctrl = np.array([0, 0, sum(model.body_mass)*9.806])
+    print(data.ctrl)
+    step += 1
     
     if (data.time>=simend):
         break;
