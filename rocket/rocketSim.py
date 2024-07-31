@@ -3,6 +3,8 @@ from mujoco.glfw import glfw
 import numpy as np
 import os
 from lqr import LQR
+from checkThrust import limitThrust
+from checkThrust import convertThrust
 
 xml_path = 'rocket.xml' #xml file (assumes this is in the same folder as this file)
 simend = 20 #simulation time
@@ -133,8 +135,7 @@ cam.azimuth = 90.0 ; cam.elevation = -29.0 ; cam.distance =  10
 cam.lookat =np.array([ 0.0 , 0.0 , 0.0 ])
 mj.mj_resetData(model, data)
 
-max = 500
-min = -500
+
 
 #set up LQR
 qpos0 = np.array([0, 0, 0, 1, 0, 0, 0])
@@ -153,8 +154,8 @@ mj.mjd_transitionFD(model, data, epsilon, flg_centered, A, B, None, None)
 
 R = np.eye(nu)*.1
 Q = np.eye(nv*2) * 100
-Qfinal = np.eye(nv*2) * 200
-lqr = LQR(A, B, Q, Qfinal, R, 1./60., simend)
+Qfinal = np.eye(nv*2) * 100
+lqr = LQR(A, B, Q, Qfinal, R, 1./60., 5)
 K = lqr.fhlqr()
 
 
@@ -164,6 +165,8 @@ mj.mj_resetData(model, data)
 #set the controller
 mj.set_mjcb_control(controller)
 
+thrustLimit = 350.
+phiLimit = 67.*np.pi/180.
 
 while not glfw.window_should_close(window):
     time_prev = data.time
@@ -172,16 +175,18 @@ while not glfw.window_should_close(window):
         mj.mj_step(model, data)
     
     cam.lookat = data.qpos[:3]
+ 
     mj.mjd_transitionFD(model, data, epsilon, flg_centered, A, B, None, None)
-    lqr = LQR(A, B, Q, Qfinal, R, 1./60., simend-data.time)
+    lqr = LQR(A, B, Q, Qfinal, R, 1./60., 5)
     K = lqr.fhlqr()
     mj.mj_differentiatePos(model, dq, 1, qpos0, data.qpos)
     dx = np.hstack((dq, data.qvel)).T
     data.ctrl = ctrl0 - K[0] @ dx
     
-    data.ctrl = np.clip(data.ctrl, min, max)
+    data.ctrl = limitThrust(data.ctrl, thrustLimit, phiLimit)
+    #convertThrust(data.ctrl)
     #data.ctrl = np.array([0, 0, sum(model.body_mass)*9.806])
-    print(data.ctrl)
+    #print(data.ctrl)
     step += 1
     
     if (data.time>=simend):
